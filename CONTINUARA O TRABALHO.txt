@@ -1,0 +1,51 @@
+== MEUSTUDIO - ESTADO ATUAL DO PROJETO ==
+Data: 2026-05-19
+
+=== FUNCIONANDO ===
+✅ Estúdio principal com cenas, camadas, canvas
+✅ Audio mixer com VU meters
+✅ Stream targets (YouTube, IG, FB, RTMP)
+✅ Monitor flutuante
+✅ Session export/import
+✅ Fullscreen
+✅ 12 salas de convidados
+✅ guest.html para celular
+✅ Link WhatsApp para convidados
+✅ Janela flutuante de recepção
+✅ Aceitar/recusar convidado
+✅ Projeção em janela secundária
+✅ Anti-flicker na projeção
+✅ Centralização automática
+
+=== PENDENTE ===
+⏳ WebRTC real (P2P) entre guest e studio
+⏳ Servidor de signaling WebSocket
+⏳ Áudio na projeção
+⏳ Múltiplos convidados na cena simultaneamente
+⏳ Controles remotos (mute, camera off)
+⏳ Gravação individual por convidado
+⏳ Chat por sala
+
+=== BUGS CONHECIDOS ===
+⚠️ Vídeo na projeção usa dataURL (lento ~10fps)
+⚠️ guest.html usa câmera local (simulação) - precisa WebRTC real
+⚠️ Projeção requer servidor local (file:/// bloqueado)
+⚠️ Máximo 12 salas (hardcoded)
+
+=== ARQUIVOS PRINCIPAIS ===
+meustudio.html      - Interface principal
+meustudio.js        - Lógica do estúdio (~2160 linhas)
+meustudio.css       - Estilos (~630 linhas)
+guest.html          - Página do convidado
+projecao.html       - Janela de projeção
+server.js           - Servidor HTTP
+
+=== DOCUMENTAÇÃO ===
+DOCUMENTACAO-GERAL.md      - Visão geral completa
+SISTEMA-CONVIDADOS.md      - Sistema de convidados detalhado
+PROJETAR-DOCUMENTACAO.md   - Projeção detalhada
+
+=== COMANDOS ===
+Iniciar: node server.js
+Acessar: http://127.0.0.1:8080/meustudio.html
+Guest:   http://127.0.0.1:8080/guest.html?room=sala-01

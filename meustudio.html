@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MeuStudio</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="meustudio.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===== TOP MENU ===== -->
+  <header class="top-menu">
+    <div class="menu-left">
+      <div class="logo">
+        <i class="fas fa-video"></i>
+        <span>MeuStudio</span>
+      </div>
+      <nav class="menu-items">
+        <button class="menu-btn" data-menu="file"><i class="far fa-file"></i> Arquivo</button>
+        <button class="menu-btn" data-menu="edit"><i class="fas fa-pencil-alt"></i> Editar</button>
+        <button class="menu-btn" data-menu="view"><i class="fas fa-eye"></i> Exibir</button>
+        <button class="menu-btn" data-menu="scene"><i class="fas fa-layer-group"></i> Cena</button>
+        <button class="menu-btn active" data-menu="dock"><i class="fas fa-th-large"></i> Painéis</button>
+        <button class="menu-btn" data-menu="settings"><i class="fas fa-cog"></i> Config</button>
+      </nav>
+    </div>
+    <div class="menu-right">
+      <span class="time-display" id="systemTime">00:00:00</span>
+      <span class="connection-status" id="sessionStatus"><span class="status-dot"></span> Sessão</span>
+      <button class="btn btn-sm" onclick="showSettings()"><i class="fas fa-sliders-h"></i></button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="main-layout">
+
+    <!-- LEFT: Scenes + Layers -->
+    <aside class="panel-left" id="panelLeft">
+      <!-- Scenes -->
+      <div class="panel-section">
+        <div class="section-header">
+          <h3><i class="fas fa-images"></i> Cenas</h3>
+          <div class="header-actions">
+            <button class="panel-btn" onclick="addScene()" title="Adicionar cena"><i class="fas fa-plus"></i></button>
+          </div>
+        </div>
+        <div class="scenes-list" id="scenesList">
+          <div class="scene-item active" data-scene="0">
+            <div class="scene-thumb"><i class="fas fa-camera"></i></div>
+            <span class="scene-name">Cena Principal</span>
+            <button class="scene-del" onclick="deleteScene(event, 0)"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="scene-item" data-scene="1">
+            <div class="scene-thumb"><i class="fas fa-users"></i></div>
+            <span class="scene-name">Sala dos Convidados</span>
+            <button class="scene-del" onclick="deleteScene(event, 1)"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="scene-item" data-scene="2">
+            <div class="scene-thumb"><i class="fas fa-clock"></i></div>
+            <span class="scene-name">BRB</span>
+            <button class="scene-del" onclick="deleteScene(event, 2)"><i class="fas fa-times"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transitions -->
+      <div class="panel-section">
+        <div class="section-header">
+          <h3><i class="fas fa-arrows-alt-h"></i> Transição</h3>
+        </div>
+        <div class="transitions-bar">
+          <button class="trans-btn active" data-trans="cut" onclick="setTransition('cut')">CORTE</button>
+          <button class="trans-btn" data-trans="fade" onclick="setTransition('fade')">FADE</button>
+          <button class="trans-btn" data-trans="morph" onclick="setTransition('morph')">MORPH</button>
+          <button class="trans-btn" data-trans="move" onclick="setTransition('move')">MOVE</button>
+        </div>
+        <div class="trans-duration">
+          <label>Duração:</label>
+          <input type="range" min="100" max="3000" value="500" id="transDuration">
+          <span id="transDurationLabel">500ms</span>
+        </div>
+      </div>
+
+      <!-- Layers -->
+      <div class="panel-section layers-section">
+        <div class="section-header">
+          <h3><i class="fas fa-layer-group"></i> Camadas</h3>
+          <div class="header-actions">
+            <button class="panel-btn" onclick="toggleAddLayerMenu()" title="Adicionar camada"><i class="fas fa-plus"></i></button>
+          </div>
+        </div>
+        <div class="add-layer-menu" id="addLayerMenu" style="display:none">
+          <button onclick="addLayer('Câmera')"><i class="fas fa-camera"></i> Dispositivo de Vídeo</button>
+          <button onclick="addLayer('Tela')"><i class="fas fa-desktop"></i> Capturar Tela</button>
+          <button onclick="addLayer('Jogo')"><i class="fas fa-gamepad"></i> Capturar Jogo</button>
+          <button onclick="addLayer('Mídia')"><i class="fas fa-file-video"></i> Mídia</button>
+          <button onclick="addLayer('Imagem')"><i class="fas fa-image"></i> Imagem</button>
+          <button onclick="addLayer('Navegador')"><i class="fas fa-globe"></i> Navegador</button>
+          <button onclick="addLayer('Texto')"><i class="fas fa-font"></i> Texto</button>
+          <button onclick="addLayer('Markdown')"><i class="fab fa-markdown"></i> Markdown</button>
+          <button onclick="addLayer('Retângulo')"><i class="fas fa-square"></i> Retângulo</button>
+          <button onclick="addLayer('Widget')"><i class="fas fa-puzzle-piece"></i> Widget</button>
+          <button onclick="addLayer('Grupo')"><i class="fas fa-object-group"></i> Grupo</button>
+        </div>
+        <div class="layers-list" id="layersList">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER: Canvas -->
+    <main class="panel-center">
+      <!-- Canvas tabs -->
+      <div class="canvas-tabs">
+        <button class="canvas-tab active">
+          <i class="fas fa-desktop"></i> Main Canvas <span class="badge">1920x1080</span>
+        </button>
+        <button class="canvas-tab float-toggle" id="floatToggle" onclick="toggleFloatCanvas()" title="Ativar/desativar janela flutuante vertical">
+          <i class="fas fa-external-link-alt"></i>
+        </button>
+      </div>
+
+      <!-- Viewport -->
+      <div class="viewport" id="viewport">
+        <div class="canvas-grid" id="canvasGrid">
+          <!-- layers rendered here by JS -->
+          <div class="empty-canvas" id="emptyCanvas">
+            <i class="fas fa-plus-circle"></i>
+            <p>Canvas vazio — adicione camadas</p>
+          </div>
+        </div>
+        <!-- Canvas overlays -->
+        <div class="canvas-overlay-top">
+          <span class="live-badge" id="liveBadge"><span class="live-dot"></span> AO VIVO</span>
+          <span class="canvas-info">Cena: <strong id="currentSceneLabel">Cena Principal</strong></span>
+        </div>
+        <div class="canvas-overlay-bottom">
+          <span class="fps-counter" id="fpsCounter">60 fps</span>
+        </div>
+      </div>
+
+      <!-- Timeline / Clips -->
+      <div class="timeline-bar" id="timelineBar">
+        <div class="timeline-controls">
+          <button class="timeline-btn" onclick="toggleClipMode()"><i class="fas fa-cut"></i> Clip</button>
+          <button class="timeline-btn" onclick="toggleReplayClip()"><i class="fas fa-redo"></i> Replay</button>
+          <span class="clip-info" id="clipInfo">Clip: 90s</span>
+        </div>
+        <div class="timeline-scrubber" id="timelineScrubber">
+          <div class="timeline-track">
+            <div class="timeline-playhead" id="playhead" style="left:0%"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT: Guests + Widgets -->
+    <aside class="panel-right" id="panelRight">
+      <!-- Guest Rooms -->
+      <div class="panel-section">
+        <div class="section-header">
+          <h3><i class="fas fa-users"></i> Convidados <span style="font-weight:400;font-size:.6rem;color:var(--text3)">(24)</span></h3>
+          <div class="header-actions">
+            <button class="panel-btn" onclick="addNewGuest()" title="Convidar"><i class="fas fa-user-plus"></i></button>
+          </div>
+        </div>
+        <div class="guest-rooms" id="guestRooms">
+          <!-- 24 slots -->
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ===== BOTTOM: Audio Mixer + Status ===== -->
+  <footer class="bottom-bar">
+    <!-- Audio Mixer -->
+    <div class="audio-mixer" id="audioMixer">
+      <div class="mixer-header">
+        <h4><i class="fas fa-headphones"></i> Mixer de Áudio</h4>
+        <div class="mixer-actions">
+          <button class="panel-btn" onclick="addAudioTrack()"><i class="fas fa-plus"></i></button>
+          <span class="vod-badge" id="vodBadge" onclick="toggleVODMode()">VOD</span>
+        </div>
+      </div>
+      <div class="mixer-channels" id="mixerChannels">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Output controls + Status -->
+    <div class="output-controls">
+      <div class="output-row">
+        <button class="btn btn-start btn-live" id="btnGoLive" onclick="toggleLive()">
+          <i class="fas fa-broadcast-tower"></i> <span id="liveBtnText">GO LIVE</span>
+        </button>
+        <button class="btn btn-stop" id="btnRecord" onclick="toggleRecord()">
+          <i class="fas fa-circle"></i> <span id="recBtnText">GRAVAR</span>
+        </button>
+        <button class="btn" onclick="makeClip()"><i class="fas fa-cut"></i> CLIP</button>
+        <button class="btn btn-proj" id="btnProject" onclick="toggleProjection()"><i class="fas fa-tv"></i> PROJETAR</button>
+        <button class="btn" onclick="detectDisplays()" title="Detectar monitores HDMI/VGA/USB"><i class="fas fa-search"></i> DETECTAR</button>
+        <button class="btn" onclick="toggleFullscreen()"><i class="fas fa-expand"></i> FULLSCREEN</button>
+      </div>
+      <div class="stream-targets" id="displaysList" style="display:flex;gap:4px;align-items:center;">
+        <span style="font-size:.6rem;color:var(--text3);font-weight:600;"><i class="fas fa-desktop"></i> SAÍDAS:</span>
+      </div>
+      <div class="stream-targets" id="streamTargets">
+        <div class="st-target" data-platform="youtube" onclick="configStreamTarget('youtube')">
+          <i class="fab fa-youtube"></i>
+          <span class="st-name">YouTube</span>
+          <span class="st-status" id="st-youtube">off</span>
+        </div>
+        <div class="st-target" data-platform="instagram" onclick="configStreamTarget('instagram')">
+          <i class="fab fa-instagram"></i>
+          <span class="st-name">Instagram</span>
+          <span class="st-status" id="st-instagram">off</span>
+        </div>
+        <div class="st-target" data-platform="facebook" onclick="configStreamTarget('facebook')">
+          <i class="fab fa-facebook"></i>
+          <span class="st-name">Facebook</span>
+          <span class="st-status" id="st-facebook">off</span>
+        </div>
+        <div class="st-target" data-platform="rtmp" onclick="configStreamTarget('rtmp')">
+          <i class="fas fa-bolt"></i>
+          <span class="st-name">RTMP</span>
+          <span class="st-status" id="st-rtmp">off</span>
+        </div>
+      </div>
+      <div class="output-modes">
+        <button class="mode-btn active" id="modeH" onclick="setOutputMode('horizontal')" title="16:9 Horizontal">⬡ 16:9</button>
+        <button class="mode-btn" id="modeV" onclick="setOutputMode('vertical')" title="9:16 Vertical (Shorts)">⬢ 9:16</button>
+        <button class="mode-btn" id="modeDual" onclick="setOutputMode('dual')" title="Ambos formatos">⬡⬢ Dual</button>
+        <span class="mode-info" id="modeInfo">H: 1920×1080</span>
+      </div>
+      <div class="status-stats">
+        <span><i class="fas fa-microchip"></i> CPU: <strong id="statCPU">0%</strong></span>
+        <span><i class="fas fa-video"></i> GPU: <strong id="statGPU">0%</strong></span>
+        <span><i class="fas fa-tachometer-alt"></i> <strong id="statBitrate">0 kbps</strong></span>
+        <span><i class="fas fa-clock"></i> <strong id="statFPS">60</strong> fps</span>
+        <span class="rec-indicator" id="recIndicator"><i class="fas fa-circle"></i> REC</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<!-- ===== FLOATING MONITOR WINDOW ===== -->
+<div class="float-canvas" id="floatCanvas">
+  <div class="float-header" id="floatHeader">
+    <i class="fas fa-desktop"></i>
+    <span>Monitor</span>
+    <div class="float-actions">
+      <button class="float-btn" id="monitorLockBtn" onclick="toggleMonitorLock()" title="Travar/destravar monitor"><i class="fas fa-lock-open"></i></button>
+      <button class="float-btn" onclick="monitorZoom(-0.2)" title="Reduzir camada"><i class="fas fa-search-minus"></i></button>
+      <button class="float-btn" onclick="monitorZoom(0.2)" title="Aumentar camada"><i class="fas fa-search-plus"></i></button>
+      <button class="float-btn" onclick="toggleFloatCanvas()" title="Fechar"><i class="fas fa-times"></i></button>
+    </div>
+  </div>
+  <div class="float-body" id="floatBody">
+    <div class="float-mirror" id="floatMirror">
+      <!-- mirrored main canvas content rendered here -->
+    </div>
+    <div class="float-overlay-top">
+      <span class="live-badge" id="floatLiveBadge"><span class="live-dot"></span> MONITOR</span>
+    </div>
+    <div class="float-overlay-bottom">
+      <span class="fps-counter" id="floatFPS">60 fps</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SETTINGS MODAL ===== -->
+<div class="modal" id="settingsModal">
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h2><i class="fas fa-cog"></i> Configurações</h2>
+      <button class="modal-close" onclick="closeModal('settingsModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-tabs">
+        <button class="st active" data-stab="general" onclick="switchSettings('general')">Geral</button>
+        <button class="st" data-stab="audio" onclick="switchSettings('audio')">Áudio</button>
+        <button class="st" data-stab="output" onclick="switchSettings('output')">Stream</button>
+        <button class="st" data-stab="recording" onclick="switchSettings('recording')">Gravação</button>
+        <button class="st" data-stab="hotkeys" onclick="switchSettings('hotkeys')">Atalhos</button>
+        <button class="st" data-stab="properties" onclick="switchSettings('properties')">Propriedades</button>
+        <button class="st" data-stab="effects" onclick="switchSettings('effects')">Efeitos</button>
+        <button class="st" data-stab="presets" onclick="switchSettings('presets')">Presets</button>
+        <button class="st" data-stab="about" onclick="switchSettings('about')">Sobre</button>
+      </div>
+      <div class="settings-content active" id="stab-general">
+        <div class="setting-row"><label>Canvas (Main)</label><select id="setCanvasRes" onchange="updateSetting('canvasRes', this.value)"><option value="3840x2160">4K UHD (3840x2160)</option><option value="2560x1440">1440p (2560x1440)</option><option value="1920x1080" selected>1080p (1920x1080)</option><option value="1536x864">864p (1536x864)</option><option value="1280x720">720p (1280x720)</option></select></div>
+        <div class="setting-row"><label>Framerate</label><select id="setFPS" onchange="updateSetting('fps', this.value)"><option value="60" selected>60 fps</option><option value="30">30 fps</option></select></div>
+        <div class="setting-row"><label>Encoder</label><select id="setEncoder" onchange="updateSetting('encoder', this.value)"><option value="hw">Hardware (NVENC)</option><option value="x264">Software (x264)</option></select></div>
+        <div class="setting-row"><label>Video Bitrate</label><input type="number" value="6000" id="setVBitrate" onchange="updateSetting('vbitrate', this.value)"> <span>kbps</span></div>
+        <div class="setting-row"><label>Audio Bitrate</label><input type="number" value="160" id="setABitrate" onchange="updateSetting('abitrate', this.value)"> <span>kbps</span></div>
+        <div class="setting-row"><label>Multi Canvas</label><label class="switch"><input type="checkbox" id="setMultiCanvas" onchange="toggleMultiCanvas(this.checked)"><span class="slider"></span></label></div>
+        <div class="setting-row"><label>Quality Preset</label><select id="setQuality" onchange="updateSetting('quality', this.value)"><option value="fastest">Fastest (Low Quality)</option><option value="fast">Very Fast</option><option value="balanced" selected>Fast (Balanced)</option><option value="good">Standard (Good Quality)</option><option value="high">High Quality</option><option value="veryhigh">Very High Quality</option><option value="best">Best Quality (Slowest)</option></select></div>
+      </div>
+      <div class="settings-content" id="stab-audio">
+        <div class="setting-row"><label>Output Device (CUE)</label><select><option>Default</option><option>Fones de Ouvido</option><option>Alto-falantes</option></select></div>
+        <div class="setting-row"><label>VOD Track (Twitch)</label><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></div>
+      </div>
+      <div class="settings-content" id="stab-output">
+        <div class="setting-row"><label>Twitch</label><input type="text" placeholder="Stream Key" class="mono-input"></div>
+        <div class="setting-row"><label>YouTube</label><input type="text" placeholder="Stream Key" class="mono-input"></div>
+        <div class="setting-row"><label>Kick</label><input type="text" placeholder="RTMP URL" class="mono-input"></div>
+        <div class="setting-row"><label>Custom RTMP</label><input type="text" placeholder="rtmp://..." class="mono-input"></div>
+      </div>
+      <div class="settings-content" id="stab-recording">
+        <div class="setting-row"><label>Formato</label><select><option>MP4</option><option>MOV</option><option selected>MKV</option><option>FLV</option></select></div>
+        <div class="setting-row"><label>Multitrack</label><label class="switch"><input type="checkbox" id="setMultitrack"><span class="slider"></span></label></div>
+        <div class="setting-row"><label>Local</label><input type="text" value="C:\Users\Videos\MeuStudio" class="mono-input"></div>
+      </div>
+      <div class="settings-content" id="stab-hotkeys">
+        <div class="hotkey-row"><span>Go Live</span><kbd>Ctrl + Shift + L</kbd></div>
+        <div class="hotkey-row"><span>Gravar</span><kbd>Ctrl + Shift + R</kbd></div>
+        <div class="hotkey-row"><span>Clip</span><kbd>Ctrl + Shift + C</kbd></div>
+        <div class="hotkey-row"><span>Mutar tudo</span><kbd>Ctrl + Shift + M</kbd></div>
+        <div class="hotkey-row"><span>Cut</span><kbd>Enter</kbd></div>
+        <div class="hotkey-row"><span>Fade</span><kbd>Shift + Enter</kbd></div>
+      </div>
+      <div class="settings-content" id="stab-about">
+        <p style="color:#999;font-size:0.85rem;line-height:1.6">
+          <strong>MeuStudio v1.0</strong><br>
+          Protótipo inspirado no Meld Studio.<br><br>
+          <i class="fas fa-check-circle" style="color:var(--success)"></i> Software livre e gratuito<br>
+          <i class="fas fa-check-circle" style="color:var(--success)"></i> Multiplataforma (Web)<br>
+          <i class="fas fa-check-circle" style="color:var(--success)"></i> Multistream + Multi Canvas + Multitrack<br>
+          <i class="fas fa-check-circle" style="color:var(--success)"></i> Efeitos visuais em tempo real
+        </p>
+      </div>
+
+      <!-- Properties Panel (inside Settings) -->
+      <div class="settings-content" id="stab-properties">
+        <div class="prop-group">
+          <label>Posição X</label>
+          <input type="number" value="0" id="propX" onchange="updateLayerProp('x', this.value)">
+          <label>Posição Y</label>
+          <input type="number" value="0" id="propY" onchange="updateLayerProp('y', this.value)">
+        </div>
+        <div class="prop-group">
+          <label>Largura (W)</label>
+          <input type="number" value="640" id="propW" onchange="updateLayerProp('w', this.value)">
+          <label>Altura (H)</label>
+          <input type="number" value="360" id="propH" onchange="updateLayerProp('h', this.value)">
+        </div>
+        <div class="prop-row">
+          <label><i class="fas fa-lock"></i> Travar AR</label>
+          <input type="checkbox" checked id="propAspect" onchange="toggleAspectRatio()">
+        </div>
+        <div class="prop-row">
+          <label>Rotação</label>
+          <input type="range" min="0" max="360" value="0" id="propRot" oninput="updateLayerProp('rot', this.value)">
+          <span id="propRotLabel">0°</span>
+        </div>
+        <div class="prop-row">
+          <label>Opacidade</label>
+          <input type="range" min="0" max="100" value="100" id="propOpac" oninput="updateLayerProp('opac', this.value)">
+          <span id="propOpacLabel">100%</span>
+        </div>
+        <div class="prop-row">
+          <label>Corner Radius</label>
+          <input type="range" min="0" max="100" value="0" id="propRadius" oninput="updateLayerProp('radius', this.value)">
+          <span id="propRadiusLabel">0</span>
+        </div>
+        <hr style="border-color:#2a2a2a;margin:12px 0">
+        <div class="prop-row" id="propRowText" style="display:none; flex-direction:column; align-items:flex-start;">
+          <label style="margin-bottom:4px;">Texto</label>
+          <textarea id="propText" oninput="updateLayerProp('text', this.value)" style="width:100%; min-height:60px; background:var(--bg1); border:1px solid #333; color:#fff; padding:6px; font-family:inherit; resize:vertical;"></textarea>
+        </div>
+        <div class="prop-group" id="propRowStyle" style="display:none; margin-top:8px;">
+          <label>Cor</label>
+          <input type="color" id="propColor" value="#ffffff" oninput="updateLayerProp('color', this.value)" style="height:24px; border:none; background:none; cursor:pointer;">
+          <label>Tamanho Fonte</label>
+          <input type="number" id="propFontSize" value="48" oninput="updateLayerProp('fontsize', this.value)">
+        </div>
+        <div class="prop-buttons">
+          <button class="btn btn-sm" onclick="flipLayer('h')"><i class="fas fa-arrows-alt-h"></i> Inverter H</button>
+          <button class="btn btn-sm" onclick="flipLayer('v')"><i class="fas fa-arrows-alt-v"></i> Inverter V</button>
+          <button class="btn btn-sm" onclick="resetLayer()"><i class="fas fa-undo"></i> Reset</button>
+        </div>
+      </div>
+
+      <!-- Effects Panel (inside Settings) -->
+      <div class="settings-content" id="stab-effects">
+        <div class="effect-list" id="effectList">
+          <div class="empty-effects">Nenhum efeito aplicado</div>
+        </div>
+        <button class="btn btn-sm" style="width:100%;margin-top:6px" onclick="showAddEffect()">
+          <i class="fas fa-plus"></i> Adicionar Efeito
+        </button>
+        <div class="add-effect-menu" id="addEffectMenu" style="display:none">
+          <button onclick="addEffect('Chroma Key')">Chroma Key</button>
+          <button onclick="addEffect('Drop Shadow')">Sombra</button>
+          <button onclick="addEffect('Gaussian Blur')">Desfoque</button>
+          <button onclick="addEffect('Gradient')">Gradiente</button>
+          <button onclick="addEffect('Brilho/Contraste')">Brilho/Contraste</button>
+          <button onclick="addEffect('Hue/Saturation')">Matiz/Saturação</button>
+          <button onclick="addEffect('Black & White')">Preto e Branco</button>
+          <button onclick="addEffect('Glow')">Brilho (Glow)</button>
+          <button onclick="addEffect('Sharpen')">Nitidez</button>
+          <button onclick="addEffect('Fill')">Preenchimento</button>
+        </div>
+      </div>
+
+      <!-- Presets Panel (inside Settings) -->
+      <div class="settings-content" id="stab-presets">
+        <div class="preset-grid">
+          <div class="preset-item" onclick="applyPreset('none')"><div class="preset-thumb" style="background:#1a1a1a"></div><span>Nenhum</span></div>
+          <div class="preset-item" onclick="applyPreset('hologram')"><div class="preset-thumb" style="background:linear-gradient(135deg,#00f,#0ff)"></div><span>Holograma</span></div>
+          <div class="preset-item" onclick="applyPreset('90s')"><div class="preset-thumb" style="background:linear-gradient(135deg,#ff0,#f0f)"></div><span>90s</span></div>
+          <div class="preset-item" onclick="applyPreset('duotone')"><div class="preset-thumb" style="background:linear-gradient(135deg,#f00,#00f)"></div><span>Duotone</span></div>
+          <div class="preset-item" onclick="applyPreset('neon')"><div class="preset-thumb" style="background:linear-gradient(135deg,#0ff,#f0f)"></div><span>Neon</span></div>
+          <div class="preset-item" onclick="applyPreset('sepia')"><div class="preset-thumb" style="background:linear-gradient(135deg,#8B4513,#D2B48C)"></div><span>Sépia</span></div>
+          <div class="preset-item" onclick="applyPreset('cinema')"><div class="preset-thumb" style="background:linear-gradient(135deg,#000,#333)"></div><span>Cinema</span></div>
+          <div class="preset-item" onclick="applyPreset('vaporwave')"><div class="preset-thumb" style="background:linear-gradient(135deg,#ff00ff,#00ffff,#ffff00)"></div><span>Vaporwave</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SESSION MODAL ===== -->
+<div class="modal" id="sessionModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2><i class="fas fa-save"></i> Sessão</h2>
+      <button class="modal-close" onclick="closeModal('sessionModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <button class="btn" style="width:100%;margin-bottom:8px" onclick="exportSession()"><i class="fas fa-file-export"></i> Exportar Sessão (.json)</button>
+      <button class="btn" style="width:100%;margin-bottom:8px" onclick="document.getElementById('importFile').click()"><i class="fas fa-file-import"></i> Importar Sessão</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importSession(event)">
+      <button class="btn" style="width:100%;margin-bottom:8px" onclick="saveBackup()"><i class="fas fa-history"></i> Salvar Backup</button>
+      <button class="btn" style="width:100%" onclick="restoreBackup()"><i class="fas fa-undo-alt"></i> Restaurar Backup</button>
+      <hr style="border-color:#2a2a2a;margin:12px 0">
+      <button class="btn" style="width:100%" onclick="importOBS()"><i class="fas fa-file-code"></i> Importar do OBS Studio</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ERROR TOAST ===== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="meustudio.js?v=34"></script>
+<script>
+// Debug: show errors on screen
+window.onerror = function(msg, url, line, col, err) {
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.95);color:#ff0;font-family:monospace;padding:20px;z-index:99999;overflow:auto;font-size:13px';
+  d.innerHTML = '<h2>JavaScript Error</h2><pre>' + msg + '\nLine: ' + line + '\nCol: ' + col + '</pre>';
+  if (err && err.stack) d.innerHTML += '<pre>' + err.stack + '</pre>';
+  document.body.appendChild(d);
+  return false;
+};
+</script>
+</body>
+</html>

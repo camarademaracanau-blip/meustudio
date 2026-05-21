@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MeuStudio - Projeção</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    background:#000;
+  }
+  #hint {
+    position:fixed; top:0; left:0; right:0; z-index:99999;
+    text-align:center; padding:8px;
+    font-family:Arial,sans-serif; font-size:13px; color:rgba(255,255,255,.7);
+    background:rgba(0,0,0,.7);
+    transition:opacity .8s;
+    pointer-events:none;
+  }
+  #hint.hidden { opacity:0; }
+  #container {
+    position:absolute;
+    left:0; top:0;
+    transform-origin:0 0;
+    overflow:hidden;
+  }
+  canvas-layer {
+    position:absolute;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background: #111;
+    border: 1px solid #333;
+  }
+  canvas-layer .layer-content {
+    width:100%; height:100%;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+    background: transparent;
+  }
+  canvas-layer .layer-content * {
+    max-width: 100%;
+    max-height: 100%;
+  }
+  canvas-layer canvas.vframe {
+    position:absolute;
+    top:0; left:0;
+    width:100%; height:100%;
+    display:block;
+  }
+  canvas-layer .layer-content {
+    width:100%; height:100%;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  canvas-layer .layer-badge {
+    position:absolute; top:4px; left:4px; z-index:20;
+    width:20px; height:20px; border-radius:50%;
+    background:#B8860B; color:#fff;
+    font-size:.65rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 1px 6px rgba(0,0,0,.5);
+    pointer-events:none;
+  }
+  #fsBtn {
+    position:fixed; bottom:12px; right:12px; z-index:9999;
+    width:40px; height:40px; border-radius:50%;
+    background:rgba(0,0,0,.5); border:2px solid rgba(255,255,255,.2);
+    color:#fff; font-size:1rem; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    opacity:0.3; transition:opacity .2s;
+  }
+  #fsBtn:hover { opacity:0.8; }
+  #info {
+    position:fixed; top:8px; left:8px; z-index:9999;
+    font-family:monospace; font-size:11px;
+    pointer-events:none;
+    display:none;
+  }
+  #status {
+    padding:4px 8px; border-radius:4px; font-size:10px; font-weight:600;
+  }
+  #status.connected { background:#1a5; color:#fff; }
+  #status.disconnected { background:#c44; color:#fff; }
+  #status.waiting { background:#c84; color:#fff; }
+  #infoText { color:rgba(255,255,255,.5); }
+</style>
+</head>
+<body>
+
+<div id="hint">Arraste para o monitor de projeção</div>
+<div id="container"></div>
+<button id="fsBtn">&#x26F6;</button>
+<div id="info">
+  <span id="status" class="waiting">AGUARDANDO</span>
+  <span id="infoText">0x0 | layers: 0 | video: 0</span>
+</div>
+
+<script>
+(function() {
+  var container = document.getElementById('container');
+  var fsBtn = document.getElementById('fsBtn');
+  var statusEl = document.getElementById('status');
+
+  var srcW = 960;
+  var srcH = 540;
+  var isConnected = false;
+  var lastMsgTime = 0;
+
+  document.addEventListener('dragover', function(e) { e.preventDefault(); });
+  document.addEventListener('drop', function(e) { e.preventDefault(); });
+
+  var dispName = 'Projeção';
+  var urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('disp')) dispName = urlParams.get('disp');
+  document.title = 'MeuStudio - ' + dispName;
+
+  // Read target position from URL
+  var targetLeft = parseInt(urlParams.get('left'));
+  var targetTop = parseInt(urlParams.get('top'));
+  var targetW = parseInt(urlParams.get('w'));
+  var targetH = parseInt(urlParams.get('h'));
+
+  // Try to move to target position
+  if (!isNaN(targetLeft) && !isNaN(targetTop)) {
+    try { window.moveTo(targetLeft, targetTop); } catch(e) {}
+  }
+  if (!isNaN(targetW) && !isNaN(targetH)) {
+    try { window.resizeTo(targetW, targetH); } catch(e) {}
+  }
+
+  var knownLayers = {};
+
+  var knownLayers = {};
+
+  // Save own position to localStorage every 2s (fallback if opener can't read)
+  setInterval(function() {
+    try {
+      var saved = JSON.parse(localStorage.getItem('meustudio_display_pos') || '{}');
+      saved[dispName] = { left: window.screenLeft, top: window.screenTop };
+      localStorage.setItem('meustudio_display_pos', JSON.stringify(saved));
+    } catch(e) {}
+  }, 2000);
+
+  // Hide hint if position is saved (meaning user already positioned it before)
+  try {
+    var _saved = JSON.parse(localStorage.getItem('meustudio_display_pos') || '{}');
+    if (_saved[dispName] && (_saved[dispName].left !== 0 || _saved[dispName].top !== 0)) {
+      document.getElementById('hint').classList.add('hidden');
+    }
+  } catch(e) {}
+  // Hide hint after 5s anyway
+  setTimeout(function() {
+    document.getElementById('hint').classList.add('hidden');
+  }, 5000);
+
+  function setStatus(connected) {
+    isConnected = connected;
+    statusEl.textContent = connected ? 'CONECTADO' : 'DESCONECTADO';
+    statusEl.className = connected ? 'connected' : 'disconnected';
+  }
+
+  function fit() {
+    if (!container || srcW < 1 || srcH < 1) return;
+    var ww = window.innerWidth;
+    var wh = window.innerHeight;
+    var sc = Math.min(ww / srcW, wh / srcH);
+    if (!sc || sc < 0.01 || !isFinite(sc)) sc = 1;
+    container.style.width = srcW + 'px';
+    container.style.height = srcH + 'px';
+    container.style.transform = 'scale(' + sc + ')';
+    container.style.left = ((ww - srcW * sc) / 2) + 'px';
+    container.style.top = ((wh - srcH * sc) / 2) + 'px';
+  }
+
+  function applyVideoFrame(layerId, bitmap, vw, vh) {
+    var info2 = knownLayers[layerId];
+    if (!info2) return;
+    var cvs = info2.canvas;
+    if (!cvs || cvs.width !== vw || cvs.height !== vh) {
+      cvs = document.createElement('canvas');
+      cvs.className = 'vframe';
+      cvs.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
+      if (info2.canvas) info2.canvas.remove();
+      info2.el.appendChild(cvs);
+      info2.canvas = cvs;
+      cvs.width = vw;
+      cvs.height = vh;
+    }
+    cvs.getContext('2d').drawImage(bitmap, 0, 0, vw, vh);
+    if (bitmap.close) bitmap.close();
+  }
+
+  function applyVideoDataURL(layerId, dataUrl, vw, vh) {
+    var info2 = knownLayers[layerId];
+    if (!info2) return;
+    var cvs = info2.canvas;
+    if (!cvs || cvs.width !== vw || cvs.height !== vh) {
+      cvs = document.createElement('canvas');
+      cvs.className = 'vframe';
+      cvs.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
+      if (info2.canvas) info2.canvas.remove();
+      info2.el.appendChild(cvs);
+      info2.canvas = cvs;
+      cvs.width = vw;
+      cvs.height = vh;
+    }
+    if (info2.lastDataUrl === dataUrl) return;
+    info2.lastDataUrl = dataUrl;
+    var img = new Image();
+    img.onload = function() {
+      cvs.getContext('2d').drawImage(img, 0, 0, vw, vh);
+    };
+    img.src = dataUrl;
+  }
+
+  function updateHTML(html) {
+    if (!html) return;
+    console.log('updateHTML called, html length:', html.length);
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    var incoming = tmp.querySelectorAll('canvas-layer');
+    console.log('Found layers:', incoming.length);
+    var incomingIds = new Set();
+    incoming.forEach(function(el) {
+      var id = el.getAttribute('data-layer');
+      if (!id) return;
+      incomingIds.add(id);
+      console.log('Processing layer:', id);
+      var info2 = knownLayers[id];
+      var newHTML = el.innerHTML;
+      if (!info2) {
+        console.log('Creating new layer:', id);
+        var clone = document.createElement('canvas-layer');
+        clone.setAttribute('data-layer', id);
+        clone.style.cssText = el.style.cssText || '';
+        clone.innerHTML = newHTML;
+        container.appendChild(clone);
+        knownLayers[id] = { html: newHTML, el: clone, hasVideo: false, canvas: null, lastDataUrl: null };
+      } else if (info2.html !== newHTML) {
+        var vframe = info2.el.querySelector('canvas.vframe');
+        info2.el.innerHTML = newHTML;
+        info2.html = newHTML;
+        info2.hasVideo = false;
+        info2.canvas = null;
+        if (vframe) {
+          info2.el.appendChild(vframe);
+          info2.hasVideo = true;
+          info2.canvas = vframe;
+        }
+      }
+    });
+    Object.keys(knownLayers).forEach(function(id) {
+      if (!incomingIds.has(id)) {
+        knownLayers[id].el.remove();
+        delete knownLayers[id];
+      }
+    });
+  }
+
+  fsBtn.onclick = function() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+      document.exitFullscreen().catch(function(){});
+    }
+  };
+
+  var autoFsDone = false;
+
+window.addEventListener('message', function(e) {
+     if (!e.data) return;
+
+      if (e.data.type === 'proj-ping') {
+        lastMsgTime = Date.now();
+        if (!isConnected) setStatus(true);
+        return;
+      }
+
+      if (e.data.type === 'proj-move') {
+        // Try to move this window to target display
+        var moved = false;
+        try {
+          if (e.data.left !== undefined && e.data.top !== undefined) {
+            window.moveTo(e.data.left, e.data.top);
+            moved = true;
+          }
+        } catch(e1) {}
+        try {
+          if (e.data.width && e.data.height) {
+            window.resizeTo(e.data.width, e.data.height);
+          }
+        } catch(e2) {}
+        return;
+      }
+
+     if (!(e.data.type === 'proj-update-html' || e.data.type === 'proj-update-video')) return;
+
+     console.log('proj-received:', {
+       type: e.data.type,
+       htmlLen: e.data.html ? e.data.html.length : 0,
+       vdata: e.data.vdata ? e.data.vdata.length : 0,
+       w: e.data.w,
+       h: e.data.h
+     });
+
+     lastMsgTime = Date.now();
+     if (!isConnected) setStatus(true);
+
+     if (e.data.w) srcW = e.data.w;
+     if (e.data.h) srcH = e.data.h;
+
+      if (e.data.type === 'proj-update-html') {
+        if (e.data.html && e.data.html.trim()) {
+          if (e.data.changed !== false) {
+            updateHTML(e.data.html);
+          }
+        }
+     } else if (e.data.type === 'proj-update-video') {
+       if (e.data.vdata && e.data.vdata.length) {
+         e.data.vdata.forEach(function(f) {
+           if (knownLayers[f.id]) knownLayers[f.id].hasVideo = true;
+           if (f.type === 'dataurl') {
+             applyVideoDataURL(f.id, f.data, f.w, f.h);
+           } else {
+             var bitmap = e.data[f.k];
+             if (bitmap) {
+               applyVideoFrame(f.id, bitmap, f.w, f.h);
+             }
+           }
+         });
+       }
+     }
+
+     fit();
+
+      if (!autoFsDone) {
+        autoFsDone = true;
+        fsBtn.style.opacity = '0.3';
+      }
+   });
+
+  function checkConnection() {
+    if (isConnected && Date.now() - lastMsgTime > 15000) {
+      setStatus(false);
+    }
+  }
+
+  window.addEventListener('resize', fit);
+
+  var initialLayers = container.querySelectorAll('canvas-layer');
+  initialLayers.forEach(function(el) {
+    var id = el.getAttribute('data-layer');
+    if (id) {
+      knownLayers[id] = { html: el.innerHTML, el: el, hasVideo: false, canvas: null, lastDataUrl: null };
+    }
+  });
+
+  requestAnimationFrame(fit);
+  setTimeout(fit, 100);
+  setTimeout(fit, 500);
+
+  setInterval(checkConnection, 1000);
+})();
+</script>
+</body>
+</html>
