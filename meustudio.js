@@ -2486,7 +2486,7 @@ window.quickAddGuest = quickAddGuest;
 // GUEST MANAGEMENT (24 convidados com vídeo)
 // ============================================
 // ALTERE AQUI O LINK BASE DOS CONVIDADOS (troque quando for para produção):
-var GUEST_BASE_URL = 'http://127.0.0.1:8080/guest.html';
+var GUEST_BASE_URL = 'https://meustudio.netlify.app/guest.html';
 
 const guestList = [
   { name: 'Raphael Pessoa', title: 'Vereador - MDB' },
