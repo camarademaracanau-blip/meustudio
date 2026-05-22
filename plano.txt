@@ -1,0 +1,26 @@
+resolva os problemas pendentes IMEDIATO. 
+
+Depois. veja a estrutura dos links dos convidados. 
+e atualize para que possamos fazer funcionar 100% 
+(links verde para watsap. apenas copie e cole). 
+Me diga como fazer uma skill para fazer atualização: 
+meustúdio: meustudio.netlify.app, Implantações feitas 
+a partir do GitHub. https://github.com/camarademaracanau-blip/meustudio, 
+e se sim. mostre o plano pra ve se ta tudo nos conformes. 
+analise os links dos convidades e me mostre como vai ficar para fazer 
+os testes. faça o plano e me mostre primeiro (tudo em portugues do brasil)
+
+faça um Planejando Correções doss Links de Convidados
+Complete toda a pesquisa do projeto. Analise: 
+shareGuestLink() (linha 2804) copia link para clipboard mas 
+NÃO abre WhatsApp; handleGuestConnection()
+ (linha 2756) usa getUserMedia local como simulação; 
+guest.html se comunica via localStorage/postMessage 
+(mesma origem, não funciona cross-origin). O deploy é via GitHub → Netlify (
+netlify.toml publica a raiz). Não existem workflows ou skills criados ainda.
+Files Edited Progress Updates
+
+pesquise no sistema os links de convidados corrija os problemas pendentes
+
+Crie um plano de implementação com correções e links WhatsApp
+Escreva o plano de implementação	

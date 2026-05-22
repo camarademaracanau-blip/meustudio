@@ -3,3 +3,17 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+*.tar.xz
+ffmpeg.exe
+server.err
+*.bak
+meustudio.zip
+MINHA TELA.png
+PLENARIO.jpg
+TELA CORTADA.png
+layers.png
+tela.png
+tela1.png
+TV CAMARA LOGO.jpg
+IMAGENS/
+*.sh

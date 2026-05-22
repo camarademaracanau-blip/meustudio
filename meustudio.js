@@ -417,6 +417,7 @@ function addLayer(type) {
     'Tela': 'fa-desktop',
     'Jogo': 'fa-gamepad',
     'Mídia': 'fa-file-video',
+    'Logo': 'fa-star',
     'Imagem': 'fa-image',
     'Navegador': 'fa-globe',
     'Texto': 'fa-font',
@@ -1043,63 +1044,250 @@ function setOutputMode(mode) {
   toast(`Formato: ${mode === 'horizontal' ? '16:9 Horizontal' : mode === 'vertical' ? '9:16 Vertical (Shorts)' : 'Dual (16:9 + 9:16)'}`, 'info');
 }
 
+// ============================================
+// STREAMING ENGINE (Real canvas capture → WebSocket → FFmpeg → RTMP)
+// ============================================
+let streamCanvas = null;
+let streamCtx = null;
+let streamWs = null;
+let streamMediaRecorder = null;
+let streamCompositeInterval = null;
+let streamTargetProcs = [];
+
+function initStreamEngine(w, h) {
+  if (streamCanvas) { streamCanvas.remove(); }
+  streamCanvas = document.createElement('canvas');
+  streamCanvas.width = w || 1920;
+  streamCanvas.height = h || 1080;
+  streamCanvas.id = 'streamCaptureCanvas';
+  streamCanvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;pointer-events:none';
+  document.body.appendChild(streamCanvas);
+  streamCtx = streamCanvas.getContext('2d');
+  streamCtx.imageSmoothingEnabled = true;
+  streamCtx.imageSmoothingQuality = 'high';
+}
+
+function renderCompositeFrame() {
+  const ctx = streamCtx;
+  const cw = streamCanvas.width;
+  const ch = streamCanvas.height;
+  if (!ctx) return;
+
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, cw, ch);
+
+  const layers = state.sceneData[state.activeScene] || [];
+  const visible = layers.filter(function(l) { return l.visible; });
+
+  for (let i = 0; i < visible.length; i++) {
+    const l = visible[i];
+    const x = l.x, y = l.y, w = l.w, h = l.h;
+    if (w <= 0 || h <= 0) continue;
+
+    if (l.type === 'Retângulo') {
+      ctx.fillStyle = l._fillColor || '#008080';
+      ctx.beginPath();
+      if (l.radius > 0) {
+        const r = Math.min(l.radius, w/2, h/2);
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.fillRect(x, y, w, h);
+      }
+
+    } else if (l.type === 'Texto') {
+      const text = l._textContent || l.text || l.name;
+      if (text) {
+        const fs = l.fontsize || Math.round(h * 0.1);
+        ctx.fillStyle = l.color || '#ffffff';
+        ctx.font = '700 ' + fs + 'px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 8;
+        ctx.fillText(text, x + w/2, y + h/2);
+        ctx.shadowBlur = 0;
+      }
+
+    } else if (l.type === 'Câmera' || l.type === 'Tela' || l.type === 'Jogo' || l.type === 'Mídia' || l.type === 'Convidado') {
+      const el = document.querySelector('canvas-layer[data-layer="' + l.id + '"]');
+      if (!el) continue;
+      // Chroma key canvas takes priority (already processed)
+      const chroma = el.querySelector('.layer-chroma-canvas');
+      if (chroma && chroma.width > 0 && chroma.height > 0) {
+        ctx.drawImage(chroma, x, y, w, h);
+      } else {
+        const vid = el.querySelector('video');
+        if (vid && vid.videoWidth > 0 && vid.videoHeight > 0) {
+          ctx.drawImage(vid, x, y, w, h);
+        }
+      }
+
+    } else if (l.type === 'Logo') {
+      const el = document.querySelector('canvas-layer[data-layer="' + l.id + '"] img');
+      if (el && el.naturalWidth > 0) {
+        ctx.drawImage(el, x, y, w, h);
+      }
+
+    } else if (l.type === 'Imagem') {
+      const el = document.querySelector('canvas-layer[data-layer="' + l.id + '"] img');
+      if (el && el.naturalWidth > 0) {
+        ctx.drawImage(el, x, y, w, h);
+      }
+    }
+  }
+}
+
+function startStreaming() {
+  const enabled = Object.keys(streamTargets).filter(function(k) {
+    return streamTargets[k].enabled && streamTargets[k].url && streamTargets[k].key;
+  });
+  if (enabled.length === 0) {
+    toast('Configure e ative ao menos um destino (YouTube, Instagram, Facebook ou RTMP)', 'warning');
+    return false;
+  }
+
+  // Init canvas at target resolution
+  var res = '1920x1080';
+  var first = enabled[0];
+  if (streamTargets[first] && streamTargets[first].res) res = streamTargets[first].res;
+  var parts = res.split('x');
+  var sw = parseInt(parts[0]) || 1920;
+  var sh = parseInt(parts[1]) || 1080;
+
+  initStreamEngine(sw, sh);
+
+  // Connect WebSocket to server
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var wsUrl = proto + '//' + location.host;
+  streamWs = new WebSocket(wsUrl);
+
+  streamWs.onopen = function() {
+    // Tell server which RTMP targets to connect to
+    var targets = enabled.map(function(k) {
+      return { id: k, url: streamTargets[k].url, key: streamTargets[k].key, res: streamTargets[k].res || res };
+    });
+    streamWs.send(JSON.stringify({ type: 'start', targets: targets }));
+
+    // Mark all as connecting
+    enabled.forEach(function(k) { streamTargets[k].status = 'con'; updateStreamTargetUI(k); });
+    toast('Conectando...', 'info');
+
+    // Start canvas capture
+    try {
+      var stream = streamCanvas.captureStream(30);
+      var mime = 'video/webm;codecs=vp9';
+      if (!MediaRecorder.isTypeSupported(mime)) {
+        mime = 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm';
+      }
+      streamMediaRecorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
+      streamMediaRecorder.ondataavailable = function(e) {
+        if (e.data && e.data.size > 0 && streamWs && streamWs.readyState === WebSocket.OPEN) {
+          streamWs.send(e.data);
+        }
+      };
+      streamMediaRecorder.start(1000); // chunk every 1s
+
+      // Composite at ~30fps
+      renderCompositeFrame(); // first frame immediately
+      streamCompositeInterval = setInterval(renderCompositeFrame, 33);
+    } catch (e) {
+      toast('Erro ao capturar canvas: ' + e.message, 'error');
+      console.error('Stream capture error:', e);
+      return false;
+    }
+
+    return true;
+  };
+
+  streamWs.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (msg.type === 'started') {
+        enabled.forEach(function(k) {
+          streamTargets[k].status = 'on';
+          updateStreamTargetUI(k);
+          toast(streamTargets[k].label + ': conectado', 'success');
+        });
+        state.isLive = true;
+        var btn = document.getElementById('btnGoLive');
+        var txt = document.getElementById('liveBtnText');
+        if (btn) btn.classList.add('live');
+        if (txt) txt.textContent = 'LIVE';
+        toast('Streaming ativo', 'success');
+      } else if (msg.type === 'stopped') {
+        // handled on ws close
+      }
+    } catch (e) {}
+  };
+
+  streamWs.onerror = function(e) {
+    toast('Erro de conexão com o servidor de streaming', 'error');
+    console.error('WS error:', e);
+    stopStreaming();
+  };
+
+  streamWs.onclose = function() {
+    if (state.isLive) {
+      toast('Conexão perdida com o servidor', 'error');
+      stopStreamingInternal();
+    }
+  };
+
+  return true;
+}
+
+function stopStreamingInternal() {
+  if (streamCompositeInterval) { clearInterval(streamCompositeInterval); streamCompositeInterval = null; }
+  if (streamMediaRecorder && streamMediaRecorder.state !== 'inactive') {
+    try { streamMediaRecorder.stop(); } catch(e) {}
+  }
+  streamMediaRecorder = null;
+  Object.keys(streamTargets).forEach(function(k) {
+    if (streamTargets[k].status === 'on' || streamTargets[k].status === 'con' || streamTargets[k].status === 'err') {
+      streamTargets[k].status = 'off';
+      updateStreamTargetUI(k);
+    }
+  });
+}
+
+function stopStreaming() {
+  stopStreamingInternal();
+  if (streamWs && streamWs.readyState === WebSocket.OPEN) {
+    streamWs.send(JSON.stringify({ type: 'stop' }));
+    streamWs.close();
+  }
+  streamWs = null;
+  if (streamCanvas) { streamCanvas.remove(); streamCanvas = null; streamCtx = null; }
+  state.isLive = false;
+  var btn = document.getElementById('btnGoLive');
+  var txt = document.getElementById('liveBtnText');
+  if (btn) btn.classList.remove('live');
+  if (txt) txt.textContent = 'GO LIVE';
+  toast('Transmissão encerrada', 'warning');
+}
+
 // Override toggleLive to connect/disconnect stream targets
 const _origToggleLive = toggleLive;
 toggleLive = function() {
   if (!state.isLive) {
-    const enabled = Object.keys(streamTargets).filter(k => streamTargets[k].enabled && streamTargets[k].url && streamTargets[k].key);
-    if (enabled.length === 0) {
-      toast('Configure e ative ao menos um destino (YouTube, Instagram, Facebook ou RTMP)', 'warning');
-      return;
-    }
-    // Show "connecting..." for all targets
-    enabled.forEach(k => {
-      streamTargets[k].status = 'con';
+    startStreaming();
+  } else {
+    stopStreaming();
+    Object.keys(streamTargets).forEach(function(k) {
+      streamTargets[k].status = 'off';
       updateStreamTargetUI(k);
     });
-    toast('Conectando...', 'info');
-    // Simulate connection delay per target
-    let delay = 0;
-    enabled.forEach(k => {
-      delay += 600 + Math.random() * 800;
-      setTimeout(() => {
-        // Simulate ~85% success rate
-        if (Math.random() < 0.85) {
-          streamTargets[k].status = 'on';
-          updateStreamTargetUI(k);
-          toast(`${streamTargets[k].label}: conectado`, 'success');
-        } else {
-          streamTargets[k].status = 'err';
-          updateStreamTargetUI(k);
-          toast(`${streamTargets[k].label}: falha ao conectar`, 'error');
-        }
-      }, delay);
-    });
-    // Call original after all connect attempts
-    setTimeout(() => {
-      _origToggleLive();
-      const connected = Object.keys(streamTargets).filter(k => streamTargets[k].status === 'on');
-      if (connected.length > 0) {
-        toast('Streaming ativo: ' + connected.map(k => streamTargets[k].label).join(', '), 'success');
-      } else {
-        toast('Nenhum destino conectado', 'error');
-        _origToggleLive(); // revert live state
-        state.isLive = false;
-        const btn = document.getElementById('btnGoLive');
-        const txt = document.getElementById('liveBtnText');
-        if (btn) btn.classList.remove('live');
-        if (txt) txt.textContent = 'GO LIVE';
-      }
-    }, delay + 200);
-  } else {
-    Object.keys(streamTargets).forEach(k => {
-      if (streamTargets[k].status === 'on' || streamTargets[k].status === 'con' || streamTargets[k].status === 'err') {
-        streamTargets[k].status = 'off';
-        updateStreamTargetUI(k);
-      }
-    });
-    _origToggleLive();
-    toast('Transmissão encerrada', 'warning');
   }
 };
 
@@ -1806,6 +1994,22 @@ function renderLayerContent(l, content) {
     }
     wrap([c]);
 
+  // ---- LOGO (flutuante, transparente) ----
+  } else if (l.type === 'Logo') {
+    const c = document.createElement('div');
+    c.style.cssText = 'width:100%;height:100%;position:relative;overflow:hidden;background:transparent;display:flex;align-items:center;justify-content:center';
+    if (l._logoUrl) {
+      let img = c.querySelector('img');
+      if (!img) { img = document.createElement('img'); c.appendChild(img); }
+      img.src = l._logoUrl;
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block';
+      img.onclick = (e) => { e.stopPropagation(); selectLayer(l.id); };
+      c.appendChild(makeDisconnectBtn(() => { l._logoUrl = null; renderLayers(state.activeScene); }));
+    } else {
+      c.appendChild(makeBtn('<i class="fas fa-star" style="font-size:1.1rem;color:#FFD700"></i> Upload Logo', () => pickLogoForLayer(l.id)));
+    }
+    wrap([c]);
+
   // ---- IMAGE ----
   } else if (l.type === 'Imagem') {
     const c = document.createElement('div');
@@ -2004,6 +2208,22 @@ function pickImageForLayer(layerId) {
       l._imageUrl = URL.createObjectURL(f);
       renderLayers(state.activeScene);
       toast(`Imagem carregada: ${f.name}`, 'success');
+    }
+  };
+  inp.click();
+}
+
+function pickLogoForLayer(layerId) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/png,image/jpeg,image/gif,image/webp,.svg';
+  inp.onchange = () => {
+    const f = inp.files[0]; if (!f) return;
+    const layers = state.sceneData[state.activeScene] || [];
+    const l = layers.find(x => x.id === layerId);
+    if (l) {
+      l._logoUrl = URL.createObjectURL(f);
+      renderLayers(state.activeScene);
+      toast(`Logo carregada: ${f.name}`, 'success');
     }
   };
   inp.click();
